@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Analyseur Terrain</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0d0d0d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Analyseur">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@300;400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d0d0d;
+  --surface: #161616;
+  --surface2: #1f1f1f;
+  --border: #2a2a2a;
+  --accent: #c8f135;
+  --accent-dim: rgba(200,241,53,0.12);
+  --red: #ff4444;
+  --red-dim: rgba(255,68,68,0.12);
+  --blue: #4db8ff;
+  --blue-dim: rgba(77,184,255,0.12);
+  --orange: #ff9a3c;
+  --text: #f0f0f0;
+  --muted: #666;
+  --muted2: #444;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Archivo', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── UPLOAD SCREEN ── */
+#uploadScreen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  position: relative;
+}
+
+.grid-bg {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.logo-area {
+  text-align: center;
+  margin-bottom: 48px;
+  animation: fadeDown 0.7s ease;
+}
+
+.logo-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  display: block;
+  animation: pulse 3s ease infinite;
+}
+
+@keyframes pulse {
+  0%,100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.logo-title {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: clamp(32px, 8vw, 52px);
+  color: var(--accent);
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.logo-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.upload-zone {
+  width: 100%;
+  max-width: 480px;
+  border: 2px dashed var(--muted2);
+  border-radius: 16px;
+  padding: 40px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: var(--surface);
+  position: relative;
+  animation: fadeUp 0.7s ease 0.2s both;
+}
+
+.upload-zone:hover, .upload-zone.drag {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  transform: scale(1.01);
+}
+
+.upload-zone input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.upload-icon { font-size: 40px; margin-bottom: 16px; display: block; }
+
+.upload-title {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 18px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.upload-hint {
+  font-size: 13px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.upload-formats {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.fmt-badge {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: 1px;
+}
+
+.features-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 480px;
+  animation: fadeUp 0.7s ease 0.4s both;
+}
+
+.feature-pill {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feature-pill span { color: var(--accent); }
+
+/* ── LOADING ── */
+#loadingScreen {
+  display: none;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.loader-ring {
+  width: 60px; height: 60px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loader-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 2px;
+}
+
+/* ── SHEET PICKER ── */
+#sheetScreen {
+  display: none;
+  min-height: 100vh;
+  padding: 32px 20px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.sheet-title {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 22px;
+  color: var(--accent);
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.sheet-sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 28px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sheet-list {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sheet-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  color: var(--text);
+  font-family: 'Archivo', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.sheet-rows {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── DASHBOARD ── */
+#dashboard {
+  display: none;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Top bar */
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar-icon { font-size: 20px; }
+
+.topbar-name {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 15px;
+  color: var(--accent);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 1px;
+}
+
+.btn-reset {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+.btn-reset:hover { border-color: var(--red); color: var(--red); }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  flex-shrink: 0;
+  padding: 12px 20px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* Tab content */
+.tab-content { display: none; padding: 16px; }
+.tab-content.active { display: block; }
+
+/* KPIs */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s;
+}
+
+.kpi-card:active { transform: scale(0.97); }
+
+.kpi-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+}
+
+.kpi-card.k-total::after { background: var(--text); }
+.kpi-card.k-done::after { background: var(--accent); }
+.kpi-card.k-open::after { background: var(--red); }
+.kpi-card.k-rate::after { background: var(--blue); }
+
+.kpi-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.kpi-val {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 40px;
+  line-height: 1;
+  color: var(--text);
+}
+
+.kpi-card.k-done .kpi-val { color: var(--accent); }
+.kpi-card.k-open .kpi-val { color: var(--red); }
+.kpi-card.k-rate .kpi-val { color: var(--blue); font-size: 32px; }
+
+.kpi-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Filters */
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+.filter-bar::-webkit-scrollbar { display: none; }
+
+.filter-group {
+  flex-shrink: 0;
+}
+
+select.filter-sel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  transition: border-color 0.2s;
+}
+
+select.filter-sel:focus { border-color: var(--accent); }
+
+/* Search */
+.search-wrap {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.search-input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'Archivo', sans-serif;
+  font-size: 14px;
+  padding: 12px 16px 12px 40px;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus { border-color: var(--accent); }
+.search-input::placeholder { color: var(--muted); }
+
+.search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 16px;
+  pointer-events: none;
+}
+
+/* Stats summary */
+.status-summary {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.status-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.status-chip:hover { border-color: var(--accent); color: var(--text); }
+.status-chip.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.status-chip.open-chip.active { background: var(--red-dim); border-color: var(--red); color: var(--red); }
+
+.chip-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+}
+
+/* Charts */
+.chart-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.chart-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+.chart-wrap { position: relative; height: 200px; }
+
+/* Region bars */
+.region-bars { display: flex; flex-direction: column; gap: 14px; }
+
+.rbar-item {}
+.rbar-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.rbar-name { font-weight: 600; font-size: 14px; }
+.rbar-pct {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 16px;
+  color: var(--accent);
+}
+.rbar-track {
+  height: 10px;
+  background: var(--surface2);
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+}
+.rbar-fill-done { background: var(--accent); height: 100%; transition: width 1s ease; }
+.rbar-fill-open { background: var(--red); height: 100%; transition: width 1s ease 0.3s; }
+.rbar-meta { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+/* Table */
+.data-table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); }
+
+table.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-table th {
+  background: var(--surface2);
+  padding: 10px 12px;
+  text-align: left;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.data-table th:hover { color: var(--accent); }
+
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: rgba(200,241,53,0.03); }
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.badge-open { background: var(--red-dim); color: var(--red); }
+.badge-closed { background: var(--blue-dim); color: var(--blue); }
+.badge-completed { background: var(--accent-dim); color: var(--accent); }
+.badge-default { background: var(--surface2); color: var(--muted); }
+
+.table-footer {
+  padding: 10px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 12px 12px;
+  letter-spacing: 1px;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+/* Alert banner */
+.alert-banner {
+  background: var(--red-dim);
+  border: 1px solid var(--red);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--red);
+}
+
+.alert-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+/* Animations */
+@keyframes fadeDown {
+  from { opacity:0; transform:translateY(-20px); }
+  to { opacity:1; transform:translateY(0); }
+}
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(20px); }
+  to { opacity:1; transform:translateY(0); }
+}
+
+.fade-in { animation: fadeUp 0.4s ease both; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- UPLOAD SCREEN -->
+<div id="uploadScreen">
+  <div class="grid-bg"></div>
+
+  <div class="logo-area">
+    <span class="logo-icon">📡</span>
+    <div class="logo-title">ANALYSEUR<br>TERRAIN</div>
+    <div class="logo-sub">Data Analytics · Mobile</div>
+  </div>
+
+  <div class="upload-zone" id="dropZone">
+    <span class="upload-icon">📂</span>
+    <div class="upload-title">Importer un fichier</div>
+    <div class="upload-hint">Excel ou CSV — fonctionne hors-ligne</div>
+    <div class="upload-formats">
+      <span class="fmt-badge">.XLSX</span>
+      <span class="fmt-badge">.XLS</span>
+      <span class="fmt-badge">.CSV</span>
+    </div>
+    <button onclick="document.getElementById('fileInput').click()" style="margin-top:20px;background:var(--accent);color:#0d0d0d;border:none;font-family:'Archivo Black',sans-serif;font-size:15px;padding:14px 32px;border-radius:10px;cursor:pointer;width:100%;letter-spacing:0.5px;">
+      📁 CHOISIR UN FICHIER
+    </button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none">
+  </div>
+
+  <div class="features-row">
+    <div class="feature-pill"><span>⚡</span> KPIs auto</div>
+    <div class="feature-pill"><span>📊</span> Graphiques</div>
+    <div class="feature-pill"><span>🔍</span> Filtres</div>
+    <div class="feature-pill"><span>🚨</span> Alertes</div>
+    <div class="feature-pill"><span>📴</span> Hors-ligne</div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loadingScreen" style="display:none;min-height:100vh;display:none;align-items:center;justify-content:center;flex-direction:column;gap:24px;">
+  <div class="loader-ring"></div>
+  <div class="loader-text" id="loadingText">LECTURE DU FICHIER...</div>
+</div>
+
+<!-- SHEET PICKER -->
+<div id="sheetScreen" style="display:none;min-height:100vh;padding:32px 20px;flex-direction:column;align-items:center;justify-content:center;">
+  <div class="sheet-title">Choisir un onglet</div>
+  <div class="sheet-sub" id="sheetFileName">fichier.xlsx</div>
+  <div class="sheet-list" id="sheetList"></div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" style="display:none;flex-direction:column;min-height:100vh;">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-icon">📡</span>
+      <div>
+        <div class="topbar-name" id="dashFileName">—</div>
+        <div class="topbar-meta" id="dashMeta">0 LIGNES · 0 COLONNES</div>
+      </div>
+    </div>
+    <button class="btn-reset" onclick="resetApp()">↩ RESET</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('overview', this)">📊 Vue d'ensemble</div>
+    <div class="tab" onclick="switchTab('charts', this)">📈 Graphiques</div>
+    <div class="tab" onclick="switchTab('table', this)">📋 Données</div>
+    <div class="tab" onclick="switchTab('alerts', this)">🚨 Alertes</div>
+  </div>
+
+  <!-- TAB: OVERVIEW -->
+  <div class="tab-content active" id="tab-overview">
+
+    <div id="alertBanner" class="alert-banner" style="display:none">
+      <div class="alert-dot"></div>
+      <span id="alertText">0 éléments nécessitent une attention</span>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="chart-block">
+      <div class="chart-label">Répartition par statut</div>
+      <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
+    </div>
+
+    <div class="chart-block">
+      <div class="chart-label">Avancement par groupe</div>
+      <div class="region-bars" id="regionBars"></div>
+    </div>
+
+  </div>
+
+  <!-- TAB: CHARTS -->
+  <div class="tab-content" id="tab-charts">
+
+    <div class="chart-block">
+      <div class="chart-label">Volume par catégorie (col 4)</div>
+      <div class="chart-wrap"><canvas id="taskChart"></canvas></div>
+    </div>
+
+    <div class="chart-block">
+      <div class="chart-label">Distribution des statuts par groupe</div>
+      <div class="chart-wrap" style="height:260px"><canvas id="stackedChart"></canvas></div>
+    </div>
+
+  </div>
+
+  <!-- TAB: TABLE -->
+  <div class="tab-content" id="tab-table">
+
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input class="search-input" id="searchInput" placeholder="Rechercher un site, zone..." oninput="filterTable()">
+    </div>
+
+    <div class="filter-bar" id="filterBar"></div>
+
+    <div class="status-summary" id="statusSummary"></div>
+
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="table-footer" id="tableFooter">0 résultats</div>
+    </div>
+
+  </div>
+
+  <!-- TAB: ALERTS -->
+  <div class="tab-content" id="tab-alerts">
+    <div id="alertsContent"></div>
+  </div>
+
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────
+let allData = [], filteredData = [], columns = [];
+let statusCol = -1, groupCol = -1, nameCol = -1, taskCol = -1;
+let activeFilters = {};
+let sortCol = -1, sortAsc = true;
+let charts = {};
+let currentFileName = '';
+
+// ─── FILE INPUT ───────────────────────────
+document.getElementById('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file) {
+  currentFileName = file.name;
+  showLoading('LECTURE DU FICHIER...');
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    setTimeout(() => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        if (wb.SheetNames.length === 1) {
+          loadSheet(wb, wb.SheetNames[0]);
+        } else {
+          showSheetPicker(wb, file.name);
+        }
+      } catch(err) {
+        alert('Erreur lecture fichier: ' + err.message);
+        resetApp();
+      }
+    }, 600);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showLoading(msg) {
+  document.getElementById('uploadScreen').style.display = 'none';
+  document.getElementById('sheetScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'none';
+  const ls = document.getElementById('loadingScreen');
+  ls.style.display = 'flex';
+  document.getElementById('loadingText').textContent = msg;
+}
+
+function showSheetPicker(wb, fname) {
+  document.getElementById('loadingScreen').style.display = 'none';
+  const ss = document.getElementById('sheetScreen');
+  ss.style.display = 'flex';
+  document.getElementById('sheetFileName').textContent = fname;
+  const list = document.getElementById('sheetList');
+  list.innerHTML = '';
+  wb.SheetNames.forEach(name => {
+    const ws = wb.Sheets[name];
+    const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    const rows = Math.max(0, data.length - 1);
+    const btn = document.createElement('button');
+    btn.className = 'sheet-btn';
+    btn.innerHTML = `<span>${name}</span><span class="sheet-rows">${rows} lignes</span>`;
+    btn.onclick = () => { showLoading('CHARGEMENT...'); setTimeout(() => loadSheet(wb, name), 400); };
+    list.appendChild(btn);
+  });
+}
+
+function loadSheet(wb, sheetName) {
+  const ws = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if (raw.length < 2) { alert('Feuille vide ou sans données'); resetApp(); return; }
+
+  columns = raw[0].map(c => String(c).trim());
+  allData = raw.slice(1).filter(r => r.some(c => c !== '')).map(r => {
+    let obj = {};
+    columns.forEach((c, i) => obj[c] = r[i] !== undefined ? r[i] : '');
+    return obj;
+  });
+
+  // Auto-detect columns
+  detectColumns();
+  filteredData = [...allData];
+  buildDashboard(sheetName);
+}
+
+function detectColumns() {
+  // Status column
+  const statusKeywords = ['status', 'statut', 'etat', 'état'];
+  statusCol = columns.findIndex(c => statusKeywords.some(k => c.toLowerCase().includes(k)));
+
+  // Group/region column
+  const groupKeywords = ['region', 'région', 'zone', 'area', 'wilaya', 'district'];
+  groupCol = columns.findIndex(c => groupKeywords.some(k => c.toLowerCase().includes(k)));
+
+  // Name column (first text-like column)
+  nameCol = 0;
+
+  // Task column (4th column or task-like)
+  const taskKeywords = ['task', 'tache', 'tâche', 'type', 'activite', 'activité'];
+  taskCol = columns.findIndex(c => taskKeywords.some(k => c.toLowerCase().includes(k)));
+  if (taskCol === -1) taskCol = Math.min(3, columns.length - 1);
+}
+
+// ─── BUILD DASHBOARD ──────────────────────
+function buildDashboard(sheetName) {
+  document.getElementById('loadingScreen').style.display = 'none';
+  const dash = document.getElementById('dashboard');
+  dash.style.display = 'flex';
+  dash.classList.add('fade-in');
+
+  document.getElementById('dashFileName').textContent = sheetName || currentFileName;
+  document.getElementById('dashMeta').textContent = `${allData.length} LIGNES · ${columns.length} COL.`;
+
+  buildKPIs();
+  buildCharts();
+  buildTable();
+  buildAlerts();
+  buildFilters();
+}
+
+// ─── KPIs ──────────────────────────────────
+function buildKPIs() {
+  const total = filteredData.length;
+  let done = 0, open = 0;
+
+  if (statusCol >= 0) {
+    const sc = columns[statusCol];
+    filteredData.forEach(r => {
+      const s = String(r[sc]).toLowerCase();
+      if (s === 'open') open++;
+      else if (s === 'closed' || s === 'completed' || s === 'terminé' || s === 'fermé') done++;
+    });
+  }
+
+  const rate = total > 0 ? Math.round((total - open) / total * 100) : 0;
+
+  const grid = document.getElementById('kpiGrid');
+  grid.innerHTML = `
+    <div class="kpi-card k-total">
+      <div class="kpi-label">Total</div>
+      <div class="kpi-val">${total}</div>
+      <div class="kpi-sub">Activités</div>
+    </div>
+    <div class="kpi-card k-rate">
+      <div class="kpi-label">Exécution</div>
+      <div class="kpi-val">${rate}%</div>
+      <div class="kpi-sub">Taux global</div>
+    </div>
+    <div class="kpi-card k-done">
+      <div class="kpi-label">Terminées</div>
+      <div class="kpi-val">${done}</div>
+      <div class="kpi-sub">${total > 0 ? Math.round(done/total*100) : 0}% du total</div>
+    </div>
+    <div class="kpi-card k-open">
+      <div class="kpi-label">Open ⚠</div>
+      <div class="kpi-val">${open}</div>
+      <div class="kpi-sub">À traiter</div>
+    </div>
+  `;
+
+  // Alert banner
+  if (open > 0) {
+    document.getElementById('alertBanner').style.display = 'flex';
+    document.getElementById('alertText').textContent = `${open} activité${open > 1 ? 's' : ''} encore ouverte${open > 1 ? 's' : ''} — action requise`;
+  }
+}
+
+// ─── CHARTS ────────────────────────────────
+function buildCharts() {
+  // Destroy old charts
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+
+  const COLORS = ['#c8f135','#4db8ff','#ff4444','#ff9a3c','#a78bfa','#34d399','#f472b6','#60a5fa'];
+
+  // Status donut
+  if (statusCol >= 0) {
+    const sc = columns[statusCol];
+    const counts = {};
+    filteredData.forEach(r => {
+      const s = String(r[sc]) || 'Inconnu';
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    const ctx = document.getElementById('statusChart').getContext('2d');
+    charts.status = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: Object.keys(counts),
+        datasets: [{ data: Object.values(counts), backgroundColor: COLORS, borderColor: '#0d0d0d', borderWidth: 3, hoverOffset: 6 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: {
+          legend: { position: 'bottom', labels: { color: '#666', font: { family: 'JetBrains Mono', size: 10 }, padding: 12, usePointStyle: true } },
+          tooltip: { backgroundColor: '#161616', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#fff', bodyColor: '#aaa' }
+        }
+      }
+    });
+  }
+
+  // Region bars
+  if (groupCol >= 0 && statusCol >= 0) {
+    const gc = columns[groupCol], sc = columns[statusCol];
+    const groups = {};
+    filteredData.forEach(r => {
+      const g = String(r[gc]) || 'Autre';
+      if (!groups[g]) groups[g] = { total: 0, done: 0, open: 0 };
+      groups[g].total++;
+      const s = String(r[sc]).toLowerCase();
+      if (s === 'open') groups[g].open++;
+      else groups[g].done++;
+    });
+
+    const el = document.getElementById('regionBars');
+    el.innerHTML = '';
+    Object.entries(groups).sort((a,b) => b[1].total - a[1].total).slice(0, 8).forEach(([name, d]) => {
+      const pDone = Math.round(d.done / d.total * 100);
+      const pOpen = Math.round(d.open / d.total * 100);
+      el.innerHTML += `
+        <div class="rbar-item">
+          <div class="rbar-header">
+            <span class="rbar-name">${name}</span>
+            <span class="rbar-pct">${pDone}%</span>
+          </div>
+          <div class="rbar-track">
+            <div class="rbar-fill-done" style="width:${pDone}%"></div>
+            <div class="rbar-fill-open" style="width:${pOpen}%"></div>
+          </div>
+          <div class="rbar-meta">${d.total} sites · ${d.open} open · ${d.done} terminés</div>
+        </div>`;
+    });
+  }
+
+  // Task chart
+  if (taskCol >= 0) {
+    const tc = columns[taskCol];
+    const counts = {};
+    filteredData.forEach(r => {
+      const t = String(r[tc]) || 'Autre';
+      counts[t] = (counts[t] || 0) + 1;
+    });
+    const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 10);
+    const ctx2 = document.getElementById('taskChart').getContext('2d');
+    charts.task = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: sorted.map(e => e[0]),
+        datasets: [{ data: sorted.map(e => e[1]), backgroundColor: '#c8f135', borderRadius: 4, borderSkipped: false }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#161616', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#fff', bodyColor: '#aaa' } },
+        scales: {
+          x: { ticks: { color: '#666', font: { family: 'JetBrains Mono', size: 9 } }, grid: { color: '#1f1f1f' } },
+          y: { ticks: { color: '#aaa', font: { family: 'JetBrains Mono', size: 9 } }, grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // Stacked chart by group + status
+  if (groupCol >= 0 && statusCol >= 0) {
+    const gc = columns[groupCol], sc = columns[statusCol];
+    const groups = {}, statuses = new Set();
+    filteredData.forEach(r => {
+      const g = String(r[gc]) || 'Autre';
+      const s = String(r[sc]) || 'Autre';
+      statuses.add(s);
+      if (!groups[g]) groups[g] = {};
+      groups[g][s] = (groups[g][s] || 0) + 1;
+    });
+    const groupNames = Object.keys(groups).slice(0, 8);
+    const statusList = [...statuses];
+    const stackColors = { 'Open': '#ff4444', 'Closed': '#4db8ff', 'Completed': '#c8f135' };
+    const datasets = statusList.map((s, i) => ({
+      label: s,
+      data: groupNames.map(g => groups[g][s] || 0),
+      backgroundColor: stackColors[s] || COLORS[i % COLORS.length],
+      borderRadius: 2
+    }));
+    const ctx3 = document.getElementById('stackedChart').getContext('2d');
+    charts.stacked = new Chart(ctx3, {
+      type: 'bar',
+      data: { labels: groupNames, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { stacked: true, ticks: { color: '#666', font: { family: 'JetBrains Mono', size: 9 } }, grid: { color: '#1f1f1f' } },
+          y: { stacked: true, ticks: { color: '#666', font: { family: 'JetBrains Mono', size: 9 } }, grid: { color: '#1f1f1f' } }
+        },
+        plugins: { legend: { labels: { color: '#666', font: { family: 'JetBrains Mono', size: 10 }, usePointStyle: true } }, tooltip: { backgroundColor: '#161616', borderColor: '#2a2a2a', borderWidth: 1, titleColor: '#fff', bodyColor: '#aaa' } }
+      }
+    });
+  }
+}
+
+// ─── FILTERS ───────────────────────────────
+function buildFilters() {
+  const bar = document.getElementById('filterBar');
+  bar.innerHTML = '';
+  activeFilters = {};
+
+  // Build filter for each categorical column (max 4)
+  const catCols = columns.filter((c, i) => {
+    const vals = allData.map(r => r[c]);
+    const unique = new Set(vals).size;
+    return unique <= 30 && unique > 1 && typeof allData[0][c] === 'string';
+  }).slice(0, 4);
+
+  catCols.forEach(col => {
+    const vals = [...new Set(allData.map(r => String(r[col])).filter(v => v))].sort();
+    const sel = document.createElement('select');
+    sel.className = 'filter-sel';
+    sel.innerHTML = `<option value="">— ${col} —</option>` + vals.map(v => `<option value="${v}">${v}</option>`).join('');
+    sel.onchange = () => {
+      if (sel.value) activeFilters[col] = sel.value;
+      else delete activeFilters[col];
+      applyFilters();
+    };
+    bar.appendChild(sel);
+  });
+
+  // Status chips
+  if (statusCol >= 0) {
+    const sc = columns[statusCol];
+    const statuses = [...new Set(allData.map(r => String(r[sc])))].filter(s => s);
+    const summary = document.getElementById('statusSummary');
+    summary.innerHTML = `<div class="status-chip active" onclick="filterByStatus(null, this)"><div class="chip-dot" style="background:#c8f135"></div>Tout (${allData.length})</div>`;
+    statuses.forEach((s, i) => {
+      const colors = { 'Open': '#ff4444', 'Closed': '#4db8ff', 'Completed': '#c8f135' };
+      const color = colors[s] || '#666';
+      const count = allData.filter(r => String(r[sc]) === s).length;
+      const cls = s === 'Open' ? 'status-chip open-chip' : 'status-chip';
+      summary.innerHTML += `<div class="${cls}" onclick="filterByStatus('${s}', this)" style="--chip-color:${color}"><div class="chip-dot" style="background:${color}"></div>${s} (${count})</div>`;
+    });
+  }
+}
+
+let activeStatusFilter = null;
+
+function filterByStatus(status, el) {
+  document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  activeStatusFilter = status;
+  applyFilters();
+}
+
+function applyFilters() {
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  filteredData = allData.filter(row => {
+    // Status filter
+    if (activeStatusFilter && statusCol >= 0) {
+      if (String(row[columns[statusCol]]) !== activeStatusFilter) return false;
+    }
+    // Active filters
+    for (const [col, val] of Object.entries(activeFilters)) {
+      if (String(row[col]) !== val) return false;
+    }
+    // Search
+    if (search) {
+      const rowStr = Object.values(row).join(' ').toLowerCase();
+      if (!rowStr.includes(search)) return false;
+    }
+    return true;
+  });
+
+  renderTable();
+  buildKPIs();
+}
+
+function filterTable() { applyFilters(); }
+
+// ─── TABLE ─────────────────────────────────
+function buildTable() {
+  const head = document.getElementById('tableHead');
+  head.innerHTML = '<tr>' + columns.map((c, i) =>
+    `<th onclick="sortByCol(${i})">${c} <span style="color:#333">↕</span></th>`
+  ).join('') + '</tr>';
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  const statusColors = { 'Open': 'badge-open', 'Closed': 'badge-closed', 'Completed': 'badge-completed' };
+
+  if (filteredData.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${columns.length}" class="empty-state">Aucun résultat</td></tr>`;
+    document.getElementById('tableFooter').textContent = '0 résultats';
+    return;
+  }
+
+  const display = filteredData.slice(0, 200);
+  tbody.innerHTML = display.map(row =>
+    '<tr>' + columns.map(c => {
+      const val = row[c] !== undefined ? String(row[c]) : '';
+      if (statusCol >= 0 && c === columns[statusCol]) {
+        const cls = statusColors[val] || 'badge-default';
+        return `<td><span class="status-badge ${cls}">${val}</span></td>`;
+      }
+      return `<td title="${val}">${val}</td>`;
+    }).join('') + '</tr>'
+  ).join('');
+
+  document.getElementById('tableFooter').textContent =
+    `${filteredData.length} résultats${filteredData.length > 200 ? ' (200 affichés)' : ''}`;
+}
+
+function sortByCol(i) {
+  if (sortCol === i) sortAsc = !sortAsc;
+  else { sortCol = i; sortAsc = true; }
+  const col = columns[i];
+  filteredData.sort((a, b) => {
+    const va = a[col], vb = b[col];
+    if (typeof va === 'number' && typeof vb === 'number') return sortAsc ? va - vb : vb - va;
+    return sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+  });
+  renderTable();
+}
+
+// ─── ALERTS ────────────────────────────────
+function buildAlerts() {
+  const el = document.getElementById('alertsContent');
+  if (statusCol < 0) {
+    el.innerHTML = '<div class="empty-state">Colonne Status non détectée automatiquement.</div>';
+    return;
+  }
+
+  const sc = columns[statusCol];
+  const openItems = allData.filter(r => String(r[sc]).toLowerCase() === 'open');
+
+  if (openItems.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:#c8f135;font-family:JetBrains Mono,monospace;font-size:14px;">✅ AUCUNE ALERTE<br><span style="color:#666;font-size:11px">Toutes les activités sont traitées</span></div>';
+    return;
+  }
+
+  // Group by task if taskCol exists
+  let grouped = {};
+  openItems.forEach(r => {
+    const t = taskCol >= 0 ? String(r[columns[taskCol]]) : 'Activité';
+    if (!grouped[t]) grouped[t] = [];
+    grouped[t].push(r);
+  });
+
+  let html = `<div class="alert-banner"><div class="alert-dot"></div><span>${openItems.length} activités OPEN à traiter</span></div>`;
+
+  Object.entries(grouped).sort((a,b) => b[1].length - a[1].length).forEach(([task, items]) => {
+    html += `
+      <div class="chart-block" style="margin-bottom:12px">
+        <div class="chart-label">${task} — ${items.length} site${items.length > 1 ? 's' : ''}</div>
+        ${items.map(r => {
+          const name = r[columns[nameCol]] || '—';
+          const group = groupCol >= 0 ? r[columns[groupCol]] : '';
+          return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <span style="font-weight:500">${name}</span>
+            <span style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px">${group}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+// ─── TABS ──────────────────────────────────
+function switchTab(id, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + id).classList.add('active');
+}
+
+// ─── RESET ────────────────────────────────
+function resetApp() {
+  allData = []; filteredData = []; columns = [];
+  Object.values(charts).forEach(c => c.destroy()); charts = {};
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('sheetScreen').style.display = 'none';
+  document.getElementById('uploadScreen').style.display = 'flex';
+  document.getElementById('fileInput').value = '';
+}
+</script>
+</body>
+</html>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
