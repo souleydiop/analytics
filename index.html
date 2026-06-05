@@ -784,6 +784,7 @@ table.data-table {
     <div class="tab" onclick="switchTab('table', this)">📋 Données</div>
     <div class="tab" onclick="switchTab('alerts', this)">🚨 Alertes</div>
     <div class="tab" onclick="switchTab('map', this)">🗺️ Carte</div>
+    <div class="tab" onclick="switchTab('site', this)">🔎 Site</div>
   </div>
 
   <!-- TAB: OVERVIEW -->
@@ -881,6 +882,24 @@ table.data-table {
         <button onclick="openInGoogleMaps()" style="flex:1;background:#1f1f1f;border:1px solid #2a2a2a;color:#f0f0f0;font-family:'Archivo',sans-serif;font-size:13px;padding:12px;border-radius:10px;cursor:pointer">📍 Google Maps</button>
       </div>
     </div>
+  </div>
+
+  <!-- TAB: SITE SEARCH -->
+  <div class="tab-content" id="tab-site">
+
+    <div style="margin-bottom:16px">
+      <div class="search-wrap">
+        <span class="search-icon">🔎</span>
+        <input class="search-input" id="siteSearchInput" placeholder="Nom du site, code, zone..." oninput="searchSite(this.value)">
+      </div>
+    </div>
+
+    <!-- Autocomplete suggestions -->
+    <div id="siteSuggestions" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;overflow:hidden;max-height:200px;overflow-y:auto"></div>
+
+    <!-- Site report -->
+    <div id="siteReport"></div>
+
   </div>
 
 </div>
@@ -2031,6 +2050,329 @@ function buildMonthlyComparison() {
 }
 
 
+
+
+// ── PPTX EXPORT ──────────────────────────────
+async function exportPPTX() {
+  document.getElementById('exportModal')?.remove();
+  showLoading('GÉNÉRATION PPTX...');
+
+  // Load PptxGenJS dynamically
+  await new Promise((res, rej) => {
+    if (window.PptxGenJS) { res(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundled.js';
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+
+  const pptx = new PptxGenJS();
+  pptx.layout = 'LAYOUT_WIDE';
+  pptx.title = currentFileName;
+
+  const BG = '0D0D0D';
+  const GREEN = 'C8F135';
+  const WHITE = 'F0F0F0';
+  const MUTED = '666666';
+  const RED = 'FF4444';
+  const BLUE = '4DB8FF';
+
+  // ── SLIDE 1: COVER ──────────────────────────
+  const s1 = pptx.addSlide();
+  s1.background = { color: BG };
+  s1.addText("RAPPORT D'ANALYSE", { x:0.5, y:0.8, w:12, h:0.6, fontSize:14, color:GREEN, fontFace:'Courier New', charSpacing:4 });
+  s1.addText(currentFileName.toUpperCase(), { x:0.5, y:1.5, w:12, h:1.5, fontSize:36, color:WHITE, fontFace:'Arial', bold:true });
+  s1.addText(new Date().toLocaleDateString('fr-FR', { year:'numeric', month:'long', day:'numeric' }), { x:0.5, y:3.2, w:12, h:0.5, fontSize:14, color:MUTED, fontFace:'Courier New' });
+
+  // Stats
+  const total = allData.length;
+  const sc = statusCol >= 0 ? columns[statusCol] : null;
+  let openC = 0, doneC = 0;
+  if (sc) allData.forEach(r => { const s = String(r[sc]).toLowerCase(); if (s==='open') openC++; else doneC++; });
+  const rate = total > 0 ? Math.round((total-openC)/total*100) : 0;
+
+  s1.addText(`${total} ACTIVITÉS  ·  ${rate}% EXÉCUTÉ  ·  ${openC} OPEN`, { x:0.5, y:3.9, w:12, h:0.5, fontSize:13, color:GREEN, fontFace:'Courier New', charSpacing:2 });
+
+  // ── SLIDE 2: KPI SUMMARY ────────────────────
+  const s2 = pptx.addSlide();
+  s2.background = { color: BG };
+  s2.addText("VUE D'ENSEMBLE", { x:0.5, y:0.3, w:12, h:0.5, fontSize:11, color:GREEN, fontFace:'Courier New', charSpacing:4 });
+
+  const kpis = [
+    { label:'TOTAL', value: String(total), color: WHITE, x:0.5 },
+    { label:'EXÉCUTION', value: rate+'%', color: BLUE, x:3.5 },
+    { label:'TERMINÉES', value: String(doneC), color: GREEN, x:6.5 },
+    { label:'OPEN', value: String(openC), color: RED, x:9.5 }
+  ];
+
+  kpis.forEach(k => {
+    s2.addShape(pptx.ShapeType.rect, { x:k.x, y:0.9, w:2.8, h:2.2, fill:{ color:'161616' }, line:{ color:'2A2A2A', width:1 } });
+    s2.addText(k.label, { x:k.x+0.1, y:1.0, w:2.6, h:0.4, fontSize:9, color:MUTED, fontFace:'Courier New', charSpacing:2 });
+    s2.addText(k.value, { x:k.x+0.1, y:1.4, w:2.6, h:1.2, fontSize:42, color:k.color, fontFace:'Arial', bold:true });
+  });
+
+  // ── SLIDE 3: BY REGION ──────────────────────
+  if (groupCol >= 0 && sc) {
+    const s3 = pptx.addSlide();
+    s3.background = { color: BG };
+    s3.addText("PAR RÉGION", { x:0.5, y:0.3, w:12, h:0.5, fontSize:11, color:GREEN, fontFace:'Courier New', charSpacing:4 });
+
+    const gc = columns[groupCol];
+    const groups = {};
+    allData.forEach(r => {
+      const g = String(r[gc]) || 'Autre';
+      if (!groups[g]) groups[g] = { total:0, open:0, done:0 };
+      groups[g].total++;
+      const st = String(r[sc]).toLowerCase();
+      if (st==='open') groups[g].open++; else groups[g].done++;
+    });
+
+    const entries = Object.entries(groups).sort((a,b)=>b[1].total-a[1].total).slice(0,8);
+    entries.forEach(([g, d], i) => {
+      const y = 1.0 + i * 0.7;
+      const pct = Math.round(d.done/d.total*100);
+      const barW = Math.max(0.1, pct/100 * 8);
+      s3.addText(g, { x:0.5, y, w:2.5, h:0.4, fontSize:12, color:WHITE, fontFace:'Arial', bold:true });
+      s3.addShape(pptx.ShapeType.rect, { x:3.2, y:y+0.1, w:8, h:0.28, fill:{ color:'1F1F1F' } });
+      s3.addShape(pptx.ShapeType.rect, { x:3.2, y:y+0.1, w:barW, h:0.28, fill:{ color: pct>=95?GREEN : pct>=80?'F4A261' : RED } });
+      s3.addText(`${pct}% (${d.total})`, { x:11.4, y, w:1.8, h:0.4, fontSize:11, color:pct>=95?GREEN:pct>=80?'F4A261':RED, fontFace:'Courier New', bold:true, align:'right' });
+      if (d.open > 0) s3.addText(`${d.open} open`, { x:3.2, y:y+0.38, w:3, h:0.25, fontSize:9, color:RED, fontFace:'Courier New' });
+    });
+  }
+
+  // ── SLIDE 4: OPEN SITES ─────────────────────
+  if (sc && openC > 0) {
+    const s4 = pptx.addSlide();
+    s4.background = { color: BG };
+    s4.addShape(pptx.ShapeType.rect, { x:0, y:0, w:13.33, h:0.7, fill:{ color:'FF4444' } });
+    s4.addText("🚨  " + openC + " ACTIVITÉS OUVERTES — ACTION REQUISE", { x:0.4, y:0.1, w:12, h:0.5, fontSize:13, color:WHITE, fontFace:'Arial', bold:true });
+
+    const openItems = allData.filter(r => String(r[sc]).toLowerCase()==='open');
+    const gc = groupCol >= 0 ? columns[groupCol] : null;
+    const tc = taskCol >= 0 ? columns[taskCol] : null;
+    const nc = columns[nameCol] || columns[0];
+
+    const rows = [
+      [
+        { text:'SITE', options:{ bold:true, color:GREEN, fontSize:9, fontFace:'Courier New' } },
+        { text:'RÉGION', options:{ bold:true, color:GREEN, fontSize:9, fontFace:'Courier New' } },
+        { text:'TÂCHE', options:{ bold:true, color:GREEN, fontSize:9, fontFace:'Courier New' } }
+      ],
+      ...openItems.slice(0,20).map(r => [
+        { text: String(r[nc]||'—'), options:{ fontSize:9, color:WHITE, fontFace:'Arial' } },
+        { text: gc ? String(r[gc]||'—') : '—', options:{ fontSize:9, color:MUTED, fontFace:'Arial' } },
+        { text: tc ? String(r[tc]||'—') : '—', options:{ fontSize:9, color:'F4A261', fontFace:'Arial' } }
+      ])
+    ];
+
+    s4.addTable(rows, {
+      x:0.4, y:0.9, w:12.5,
+      colW:[5, 3.5, 4],
+      border:{ type:'solid', color:'2A2A2A', pt:0.5 },
+      fill:{ color:'161616' },
+      rowH:0.28
+    });
+
+    if (openItems.length > 20) s4.addText(`... et ${openItems.length-20} autres`, { x:0.4, y:7.0, w:12, h:0.3, fontSize:10, color:MUTED, fontFace:'Courier New' });
+  }
+
+  // ── SLIDE 5: TASK BREAKDOWN ──────────────────
+  if (taskCol >= 0) {
+    const s5 = pptx.addSlide();
+    s5.background = { color: BG };
+    s5.addText("PAR TYPE DE TÂCHE", { x:0.5, y:0.3, w:12, h:0.5, fontSize:11, color:GREEN, fontFace:'Courier New', charSpacing:4 });
+
+    const tc = columns[taskCol];
+    const taskCounts = {};
+    allData.forEach(r => { const t=String(r[tc]||'Autre'); taskCounts[t]=(taskCounts[t]||0)+1; });
+    const taskEntries = Object.entries(taskCounts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+    const maxVal = taskEntries[0][1];
+
+    taskEntries.forEach(([t, n], i) => {
+      const y = 1.0 + i * 0.65;
+      const barW = Math.max(0.2, n/maxVal * 9);
+      s5.addText(t, { x:0.5, y, w:2.5, h:0.4, fontSize:11, color:WHITE, fontFace:'Arial' });
+      s5.addShape(pptx.ShapeType.rect, { x:3.1, y:y+0.08, w:barW, h:0.28, fill:{ color:GREEN } });
+      s5.addText(String(n), { x:3.2+barW, y, w:1.5, h:0.4, fontSize:13, color:GREEN, fontFace:'Arial', bold:true });
+    });
+  }
+
+  // ── SAVE ────────────────────────────────────
+  document.getElementById('loadingScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'flex';
+
+  const fname = currentFileName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]/g,'_');
+  await pptx.writeFile({ fileName: `rapport_${fname}_${new Date().toISOString().slice(0,10)}.pptx` });
+}
+
+// ── SITE SEARCH & SYNTHESIS ──────────────────
+let siteSearchTimer = null;
+
+function searchSite(query) {
+  clearTimeout(siteSearchTimer);
+  const sugg = document.getElementById('siteSuggestions');
+
+  if (!query || query.length < 2) {
+    sugg.style.display = 'none';
+    return;
+  }
+
+  siteSearchTimer = setTimeout(() => {
+    const q = query.toLowerCase();
+    // Get unique site names
+    const nameCol2 = columns[nameCol] || columns[0];
+    const matches = [...new Set(allData
+      .map(r => String(r[nameCol2] || ''))
+      .filter(n => n.toLowerCase().includes(q))
+    )].slice(0, 10);
+
+    if (matches.length === 0) {
+      sugg.style.display = 'none';
+      return;
+    }
+
+    sugg.style.display = 'block';
+    sugg.innerHTML = matches.map(m => `
+      <div onclick="selectSite('${m.replace(/'/g,"\\'")}'); document.getElementById('siteSearchInput').value='${m.replace(/'/g,"\\'")}'; document.getElementById('siteSuggestions').style.display='none'"
+        style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:500;transition:background 0.15s"
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"
+      >
+        <span style="color:var(--accent)">📍</span> ${m}
+      </div>
+    `).join('');
+  }, 200);
+}
+
+function selectSite(siteName) {
+  const nameCol2 = columns[nameCol] || columns[0];
+  const siteRows = allData.filter(r => String(r[nameCol2] || '') === siteName);
+
+  if (siteRows.length === 0) {
+    document.getElementById('siteReport').innerHTML = '<div class="empty-state">Aucune donnée trouvée</div>';
+    return;
+  }
+
+  // Build synthesis
+  const sc = statusCol >= 0 ? columns[statusCol] : null;
+  const gc = groupCol >= 0 ? columns[groupCol] : null;
+  const tc = taskCol >= 0 ? columns[taskCol] : null;
+
+  const region = gc ? (siteRows[0][gc] || '—') : '—';
+  const totalActions = siteRows.length;
+
+  // Status breakdown
+  const statusCount = {};
+  siteRows.forEach(r => {
+    const s = sc ? String(r[sc]) : 'N/A';
+    statusCount[s] = (statusCount[s] || 0) + 1;
+  });
+
+  // Task breakdown
+  const taskCount = {};
+  siteRows.forEach(r => {
+    const t = tc ? String(r[tc]) : 'N/A';
+    taskCount[t] = (taskCount[t] || 0) + 1;
+  });
+
+  const openCount = statusCount['Open'] || 0;
+  const doneCount = totalActions - openCount;
+  const rate = Math.round(doneCount / totalActions * 100);
+  const statusColor = openCount > 0 ? 'var(--red)' : 'var(--accent)';
+  const statusIcon = openCount > 0 ? '⚠️' : '✅';
+
+  // Build extra columns (description, comments, tickets)
+  const extraCols = columns.filter((c, i) =>
+    i !== nameCol && i !== statusCol && i !== groupCol && i !== taskCol
+  );
+
+  const html = `
+    <div style="animation:fadeUp 0.3s ease">
+
+      <!-- Site header -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">
+          <div>
+            <div style="font-family:'Archivo Black',sans-serif;font-size:20px;color:var(--text)">${siteName}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-top:4px">${region} · ${totalActions} action${totalActions > 1 ? 's' : ''}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Archivo Black',sans-serif;font-size:36px;color:${statusColor}">${rate}%</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)">EXÉCUTÉ</div>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="margin-top:12px;height:8px;background:var(--surface2);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${rate}%;background:${openCount > 0 ? 'var(--accent)' : 'var(--accent)'};transition:width 1s ease"></div>
+        </div>
+
+        <!-- Status chips -->
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          ${Object.entries(statusCount).map(([s, n]) => {
+            const colors = { 'Open': ['var(--red-dim)','var(--red)'], 'Closed': ['var(--blue-dim)','var(--blue)'], 'Completed': ['var(--accent-dim)','var(--accent)'] };
+            const [bg, fg] = colors[s] || ['var(--surface2)','var(--muted)'];
+            return `<span style="background:${bg};color:${fg};border:1px solid ${fg};font-family:'JetBrains Mono',monospace;font-size:10px;padding:4px 10px;border-radius:4px;font-weight:700">${s}: ${n}</span>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Tasks summary -->
+      ${Object.keys(taskCount).length > 0 ? `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px">
+        <div class="chart-label" style="margin-bottom:12px">Tâches effectuées</div>
+        ${Object.entries(taskCount).sort((a,b) => b[1]-a[1]).map(([t, n]) => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div style="font-size:13px;font-weight:500">${t}</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="height:6px;width:${Math.round(n/totalActions*80)}px;background:var(--accent);border-radius:2px"></div>
+              <span style="font-family:'Archivo Black',sans-serif;font-size:16px;color:var(--accent)">${n}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>` : ''}
+
+      <!-- Detailed actions table -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--border)">
+          <div class="chart-label">Détail de toutes les actions</div>
+        </div>
+        <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr>
+            ${tc ? `<th>Tâche</th>` : ''}
+            ${sc ? `<th>Statut</th>` : ''}
+            ${extraCols.slice(0,4).map(c => `<th>${c}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            ${siteRows.map(r => {
+              const statusColors = { 'Open': 'badge-open', 'Closed': 'badge-closed', 'Completed': 'badge-completed' };
+              return `<tr>
+                ${tc ? `<td style="font-weight:500">${r[columns[taskCol]] || '—'}</td>` : ''}
+                ${sc ? `<td><span class="status-badge ${statusColors[r[columns[statusCol]]] || 'badge-default'}">${r[columns[statusCol]] || '—'}</span></td>` : ''}
+                ${extraCols.slice(0,4).map(c => `<td style="font-size:11px;color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r[c] || ''}">${r[c] || '—'}</td>`).join('')}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <!-- Export button -->
+      <button onclick="exportSiteReport('${siteName.replace(/'/g,"\\'")}', ${JSON.stringify(siteRows).replace(/</g,'\\u003c')})"
+        style="width:100%;padding:14px;background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);font-family:'Archivo Black',sans-serif;font-size:14px;border-radius:10px;cursor:pointer;margin-bottom:20px">
+        ⬇ EXPORTER CE RAPPORT — CSV
+      </button>
+    </div>
+  `;
+
+  document.getElementById('siteReport').innerHTML = html;
+}
+
+function exportSiteReport(siteName, rows) {
+  const csv = toCSV(rows, columns);
+  downloadCSV(csv, `rapport_${siteName.replace(/[^a-zA-Z0-9]/g,'_')}_${Date.now()}.csv`);
+}
+
 // ── EXPORT ───────────────────────────────────
 function openExportModal() {
   const modal = document.createElement('div');
@@ -2060,6 +2402,10 @@ function openExportModal() {
         <button onclick="exportMapPoints()" id="exportMapBtn" style="width:100%;padding:14px;background:#1f1f1f;border:1px solid #2a2a2a;color:#f0f0f0;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px">
           <span style="font-size:24px">🗺️</span>
           <div><div>Points carte — CSV</div><div style="font-size:11px;color:#666;font-family:'JetBrains Mono',monospace">Coordonnées GPS des points KMZ</div></div>
+        </button>
+        <button onclick="exportPPTX()" style="width:100%;padding:14px;background:rgba(77,184,255,0.08);border:1px solid rgba(77,184,255,0.3);color:#4db8ff;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px">
+          <span style="font-size:24px">📊</span>
+          <div><div>Présentation — PPTX</div><div style="font-size:11px;color:#666;font-family:'JetBrains Mono',monospace">Rapport complet en PowerPoint</div></div>
         </button>
       </div>
       <button onclick="document.getElementById('exportModal').remove()" style="width:100%;margin-top:12px;padding:12px;background:transparent;border:1px solid #2a2a2a;color:#666;font-family:'Archivo',sans-serif;font-size:13px;border-radius:10px;cursor:pointer">Fermer</button>
