@@ -772,6 +772,7 @@ table.data-table {
     <div style="display:flex;gap:8px;align-items:center">
       <button onclick="openNoteModal()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;padding:8px 10px;border-radius:8px;cursor:pointer;" title="Notes">📝</button>
       <button onclick="loadFromHistory()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;padding:8px 10px;border-radius:8px;cursor:pointer;" title="Historique">🕐</button>
+      <button onclick="openExportModal()" style="background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);font-family:'JetBrains Mono',monospace;font-size:10px;padding:8px 10px;border-radius:8px;cursor:pointer;" title="Exporter">⬇</button>
       <button class="btn-reset" onclick="resetApp()">↩</button>
     </div>
   </div>
@@ -1251,32 +1252,30 @@ function filterByStatus(status, el) {
   applyFilters();
 }
 
-const _applyFiltersCore = debounce(function() {
-  const search = document.getElementById('searchInput').value.toLowerCase();
-  filteredData = allData.filter(row => {
-    // Status filter
-    if (activeStatusFilter && statusCol >= 0) {
-      if (String(row[columns[statusCol]]) !== activeStatusFilter) return false;
-    }
-    // Active filters
-    for (const [col, val] of Object.entries(activeFilters)) {
-      if (String(row[col]) !== val) return false;
-    }
-    // Search
-    if (search) {
-      const rowStr = Object.values(row).join(' ').toLowerCase();
-      if (!rowStr.includes(search)) return false;
-    }
-    return true;
-  });
-
-  requestAnimationFrame(() => {
-    renderTable();
-    buildKPIs();
-  });
-}, 150);
-
-function applyFilters() { _applyFiltersCore(); }
+let _filterTimer = null;
+function applyFilters() {
+  clearTimeout(_filterTimer);
+  _filterTimer = setTimeout(() => {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    filteredData = allData.filter(row => {
+      if (activeStatusFilter && statusCol >= 0) {
+        if (String(row[columns[statusCol]]) !== activeStatusFilter) return false;
+      }
+      for (const [col, val] of Object.entries(activeFilters)) {
+        if (String(row[col]) !== val) return false;
+      }
+      if (search) {
+        const rowStr = Object.values(row).join(' ').toLowerCase();
+        if (!rowStr.includes(search)) return false;
+      }
+      return true;
+    });
+    requestAnimationFrame(() => {
+      renderTable();
+      buildKPIs();
+    });
+  }, 150);
+}
 function filterTable() { applyFilters(); }
 
 // ─── TABLE ─────────────────────────────────
@@ -1286,11 +1285,6 @@ function buildTable() {
     `<th onclick="sortByCol(${i})">${c} <span style="color:#333">↕</span></th>`
   ).join('') + '</tr>';
   renderTable();
-}
-
-// Debounce helper
-function debounce(fn, ms) {
-  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
 const PAGE_SIZE = 50;
@@ -2034,6 +2028,124 @@ function buildMonthlyComparison() {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
   document.querySelector('[onclick*="charts"]').classList.add('active');
   document.getElementById('tab-charts').classList.add('active');
+}
+
+
+// ── EXPORT ───────────────────────────────────
+function openExportModal() {
+  const modal = document.createElement('div');
+  modal.id = 'exportModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `
+    <div style="background:#161616;border:1px solid #2a2a2a;border-radius:16px;padding:24px;width:100%;max-width:380px">
+      <div style="font-family:'Archivo Black',sans-serif;color:#c8f135;font-size:18px;margin-bottom:4px">⬇ Exporter</div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#666;margin-bottom:20px">Choisir le format et le contenu</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button onclick="exportCSV()" style="width:100%;padding:14px;background:#1f1f1f;border:1px solid #2a2a2a;color:#f0f0f0;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px">
+          <span style="font-size:24px">📄</span>
+          <div><div>Données filtrées — CSV</div><div style="font-size:11px;color:#666;font-family:'JetBrains Mono',monospace">Tableau actuel avec filtres appliqués</div></div>
+        </button>
+        <button onclick="exportAllCSV()" style="width:100%;padding:14px;background:#1f1f1f;border:1px solid #2a2a2a;color:#f0f0f0;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px">
+          <span style="font-size:24px">📊</span>
+          <div><div>Toutes les données — CSV</div><div style="font-size:11px;color:#666;font-family:'JetBrains Mono',monospace">Export complet sans filtres</div></div>
+        </button>
+        <button onclick="exportOpenSites()" style="width:100%;padding:14px;background:rgba(255,68,68,0.08);border:1px solid rgba(255,68,68,0.3);color:#ff8888;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px">
+          <span style="font-size:24px">🚨</span>
+          <div><div>Sites OPEN — CSV</div><div style="font-size:11px;color:#666;font-family:'JetBrains Mono',monospace">Uniquement les activités ouvertes</div></div>
+        </button>
+        <button onclick="exportKPIReport()" style="width:100%;padding:14px;background:rgba(200,241,53,0.08);border:1px solid rgba(200,241,53,0.3);color:#c8f135;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px">
+          <span style="font-size:24px">📋</span>
+          <div><div>Rapport KPI — CSV</div><div style="font-size:11px;color:#666;font-family:'JetBrains Mono',monospace">Résumé par région et statut</div></div>
+        </button>
+        <button onclick="exportMapPoints()" id="exportMapBtn" style="width:100%;padding:14px;background:#1f1f1f;border:1px solid #2a2a2a;color:#f0f0f0;font-family:'Archivo',sans-serif;font-size:14px;font-weight:500;border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px">
+          <span style="font-size:24px">🗺️</span>
+          <div><div>Points carte — CSV</div><div style="font-size:11px;color:#666;font-family:'JetBrains Mono',monospace">Coordonnées GPS des points KMZ</div></div>
+        </button>
+      </div>
+      <button onclick="document.getElementById('exportModal').remove()" style="width:100%;margin-top:12px;padding:12px;background:transparent;border:1px solid #2a2a2a;color:#666;font-family:'Archivo',sans-serif;font-size:13px;border-radius:10px;cursor:pointer">Fermer</button>
+    </div>`;
+  document.body.appendChild(modal);
+  // Hide map export if no map points
+  if (!mapPoints || mapPoints.length === 0) {
+    const btn = document.getElementById('exportMapBtn');
+    if (btn) btn.style.opacity = '0.3';
+  }
+}
+
+function toCSV(data, cols) {
+  const header = cols.join(',');
+  const rows = data.map(row =>
+    cols.map(c => {
+      const v = row[c] !== undefined ? String(row[c]) : '';
+      return v.includes(',') || v.includes('"') || v.includes('\n')
+        ? `"${v.replace(/"/g, '""')}"` : v;
+    }).join(',')
+  );
+  return [header, ...rows].join('\n');
+}
+
+function downloadCSV(content, filename) {
+  const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  document.getElementById('exportModal')?.remove();
+}
+
+function exportCSV() {
+  const csv = toCSV(filteredData, columns);
+  downloadCSV(csv, `export_filtre_${Date.now()}.csv`);
+}
+
+function exportAllCSV() {
+  const csv = toCSV(allData, columns);
+  downloadCSV(csv, `export_complet_${Date.now()}.csv`);
+}
+
+function exportOpenSites() {
+  if (statusCol < 0) { alert('Colonne Status non détectée'); return; }
+  const sc = columns[statusCol];
+  const openData = allData.filter(r => String(r[sc]).toLowerCase() === 'open');
+  if (openData.length === 0) { alert('Aucun site Open'); return; }
+  const csv = toCSV(openData, columns);
+  downloadCSV(csv, `sites_open_${Date.now()}.csv`);
+}
+
+function exportKPIReport() {
+  if (statusCol < 0 || groupCol < 0) { alert('Colonnes Status/Région non détectées'); return; }
+  const sc = columns[statusCol], gc = columns[groupCol];
+  const groups = {};
+  allData.forEach(row => {
+    const g = String(row[gc]) || 'Autre';
+    const s = String(row[sc]).toLowerCase();
+    if (!groups[g]) groups[g] = { total: 0, open: 0, closed: 0, completed: 0 };
+    groups[g].total++;
+    if (s === 'open') groups[g].open++;
+    else if (s === 'closed') groups[g].closed++;
+    else if (s === 'completed') groups[g].completed++;
+  });
+  const kpiData = Object.entries(groups).map(([g, d]) => ({
+    Region: g,
+    Total: d.total,
+    Open: d.open,
+    Closed: d.closed,
+    Completed: d.completed,
+    Taux_Execution: Math.round((d.total - d.open) / d.total * 100) + '%'
+  }));
+  const csv = toCSV(kpiData, ['Region','Total','Open','Closed','Completed','Taux_Execution']);
+  downloadCSV(csv, `rapport_kpi_${Date.now()}.csv`);
+}
+
+function exportMapPoints() {
+  if (!mapPoints || mapPoints.length === 0) { alert('Aucun point carte chargé'); return; }
+  const data = (filteredMapPoints.length > 0 ? filteredMapPoints : mapPoints).map(p => ({
+    Nom: p.name, Categorie: p.folder, Latitude: p.lat, Longitude: p.lng, Altitude: p.alt, Description: p.desc
+  }));
+  const csv = toCSV(data, ['Nom','Categorie','Latitude','Longitude','Altitude','Description']);
+  downloadCSV(csv, `points_carte_${Date.now()}.csv`);
 }
 
 function resetApp() {
