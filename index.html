@@ -2055,16 +2055,29 @@ function buildMonthlyComparison() {
 // ── PPTX EXPORT ──────────────────────────────
 async function exportPPTX() {
   document.getElementById('exportModal')?.remove();
-  showLoading('GÉNÉRATION PPTX...');
 
-  // Load PptxGenJS dynamically
-  await new Promise((res, rej) => {
-    if (window.PptxGenJS) { res(); return; }
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundled.js';
-    s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
-  });
+  // Show inline spinner — don't use showLoading (hides dashboard permanently on error)
+  const spinner = document.createElement('div');
+  spinner.id = 'pptxSpinner';
+  spinner.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px';
+  spinner.innerHTML = '<div style="width:48px;height:48px;border:3px solid #2a2a2a;border-top-color:#c8f135;border-radius:50%;animation:spin 0.8s linear infinite"></div><div style="font-family:JetBrains Mono,monospace;font-size:12px;color:#c8f135;letter-spacing:2px" id="pptxMsg">CHARGEMENT PPTXGENJS...</div>';
+  document.body.appendChild(spinner);
+
+  const setMsg = m => { const el = document.getElementById('pptxMsg'); if(el) el.textContent = m; };
+  const cleanup = () => document.getElementById('pptxSpinner')?.remove();
+
+  try {
+    // Load PptxGenJS dynamically
+    setMsg('CHARGEMENT BIBLIOTHÈQUE...');
+    await new Promise((res, rej) => {
+      if (window.PptxGenJS) { res(); return; }
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundled.js';
+      s.onload = res;
+      s.onerror = () => rej(new Error('Impossible de charger PptxGenJS — vérifie ta connexion'));
+      document.head.appendChild(s);
+    });
+    setMsg('GÉNÉRATION DES SLIDES...');
 
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
@@ -2198,11 +2211,15 @@ async function exportPPTX() {
   }
 
   // ── SAVE ────────────────────────────────────
-  document.getElementById('loadingScreen').style.display = 'none';
-  document.getElementById('dashboard').style.display = 'flex';
+    setMsg('TÉLÉCHARGEMENT...');
+    const fname = currentFileName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]/g,'_');
+    await pptx.writeFile({ fileName: `rapport_${fname}_${new Date().toISOString().slice(0,10)}.pptx` });
+    cleanup();
 
-  const fname = currentFileName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]/g,'_');
-  await pptx.writeFile({ fileName: `rapport_${fname}_${new Date().toISOString().slice(0,10)}.pptx` });
+  } catch(err) {
+    cleanup();
+    alert('Erreur PPTX: ' + err.message);
+  }
 }
 
 // ── SITE SEARCH & SYNTHESIS ──────────────────
