@@ -908,6 +908,12 @@ dropZone.addEventListener('drop', e => {
 });
 
 function handleFile(file) {
+  // Route KMZ/KML to map handler
+  const ext = file.name.toLowerCase();
+  if (ext.endsWith('.kmz') || ext.endsWith('.kml')) {
+    handleKMZ(file);
+    return;
+  }
   currentFileName = file.name;
   showLoading('LECTURE DU FICHIER...');
 
@@ -1650,17 +1656,6 @@ function openInGoogleMaps() {
     window.open(`https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`);
   } else {
     openItinerary();
-  }
-}
-
-// Also handle KMZ from main file input
-const _origHandleFile = handleFile;
-function handleFile(file) {
-  const name = file.name.toLowerCase();
-  if (name.endsWith('.kmz') || name.endsWith('.kml')) {
-    handleKMZ(file);
-  } else {
-    _origHandleFile(file);
   }
 }
 
