@@ -1,7 +1,7 @@
 {
   "name": "Analyseur Terrain",
   "short_name": "Analyseur",
-  "description": "Analyse de données terrain Excel/CSV sur mobile",
+  "description": "Analyse de données terrain Excel/CSV/KMZ sur mobile, hors-ligne",
   "start_url": "/analytics/",
   "scope": "/analytics/",
   "display": "standalone",
@@ -140,5 +140,15 @@
       ]
     }
   },
-  "id": "/analytics/"
+  "id": "/analytics/",
+  "screenshots": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Analyseur Terrain"
+    }
+  ],
+  "prefer_related_applications": false
 }
